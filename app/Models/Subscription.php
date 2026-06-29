@@ -83,6 +83,24 @@ class Subscription extends Model
             return false;
         }
 
+        // Apply any change deferred to this renewal (set via scheduled_change).
+        if (! empty($this->scheduled_change)) {
+            $change = $this->scheduled_change;
+            if (($change['type'] ?? null) === 'downgrade') {
+                $this->product_service_id = $change['product_service_id'];
+                if (isset($change['price'])) {
+                    $this->price = $change['price'];
+                }
+            } elseif (($change['type'] ?? null) === 'cancel') {
+                $this->scheduled_change = null;
+                $this->auto_renew = false;
+                $this->status = 'cancelled';
+
+                return $this->save();
+            }
+            $this->scheduled_change = null;
+        }
+
         $renewalPeriod = $this->getRenewalPeriod();
         $this->end_date = Carbon::parse($this->end_date)->add($renewalPeriod);
         $this->last_billed_at = now();

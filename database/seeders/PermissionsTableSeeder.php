@@ -28,6 +28,18 @@ class PermissionsTableSeeder extends Seeder
     public static function permissionList(): array
     {
         return [
+            'view_subscription',
+            'view_any_subscription',
+            'create_subscription',
+            'update_subscription',
+            'restore_subscription',
+            'restore_any_subscription',
+            'replicate_subscription',
+            'reorder_subscription',
+            'delete_subscription',
+            'delete_any_subscription',
+            'force_delete_subscription',
+            'force_delete_any_subscription',
             'view_affiliate',
             'view_any_affiliate',
             'create_affiliate',

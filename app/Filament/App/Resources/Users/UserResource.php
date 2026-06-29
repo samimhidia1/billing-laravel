@@ -20,6 +20,11 @@ class UserResource extends Resource
     #[\Override]
     protected static ?string $model = User::class;
 
+    // Users aren't team-owned (no `team` relationship), so this resource must NOT
+    // be scoped to the App panel's Team tenant — otherwise it 500s with
+    // "User does not have a relationship named [team]".
+    protected static bool $isScopedToTenant = false;
+
     #[\Override]
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-rectangle-stack';
 

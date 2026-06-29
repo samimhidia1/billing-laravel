@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace App\Filament\Admin\Resources\Subscriptions;
 
-use App\Filament\Resources\SubscriptionResource\Pages;
+use App\Models\Products_Service;
 use App\Models\Subscription;
+use App\Services\BillingService;
+use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
@@ -24,7 +27,7 @@ class SubscriptionResource extends Resource
     protected static ?string $model = Subscription::class;
 
     #[\Override]
-    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-collection';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-rectangle-stack';
 
     #[\Override]
     public static function form(Schema $schema): Schema
@@ -34,8 +37,8 @@ class SubscriptionResource extends Resource
                 Select::make('customer_id')
                     ->relationship('customer', 'name')
                     ->required(),
-                Select::make('subscription_plan_id')
-                    ->relationship('subscriptionPlan', 'name')
+                Select::make('product_service_id')
+                    ->relationship('productService', 'name')
                     ->required(),
                 DatePicker::make('start_date')
                     ->required(),
@@ -60,7 +63,7 @@ class SubscriptionResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('customer.name'),
-                TextColumn::make('subscriptionPlan.name'),
+                TextColumn::make('productService.name'),
                 TextColumn::make('status'),
                 TextColumn::make('start_date'),
                 TextColumn::make('end_date'),
@@ -77,6 +80,48 @@ class SubscriptionResource extends Resource
                     ]),
             ])
             ->recordActions([
+                Action::make('upgrade')
+                    ->label('Upgrade')
+                    ->icon('heroicon-o-arrow-up-circle')
+                    ->color('success')
+                    ->schema([
+                        Select::make('product_service_id')
+                            ->label('New product')
+                            ->options(fn (Subscription $record) => Products_Service::query()
+                                ->where('base_price', '>=', $record->price)
+                                ->where('id', '!=', $record->product_service_id)
+                                ->pluck('name', 'id'))
+                            ->required(),
+                    ])
+                    ->action(function (array $data, Subscription $record): void {
+                        $invoice = app(BillingService::class)
+                            ->upgradeSubscription($record, Products_Service::findOrFail($data['product_service_id']));
+                        Notification::make()
+                            ->title('Subscription upgraded')
+                            ->body("Prorated invoice {$invoice->invoice_number}: {$invoice->total_amount} {$invoice->currency}")
+                            ->success()->send();
+                    }),
+                Action::make('downgrade')
+                    ->label('Downgrade')
+                    ->icon('heroicon-o-arrow-down-circle')
+                    ->color('warning')
+                    ->schema([
+                        Select::make('product_service_id')
+                            ->label('New product (applied at renewal)')
+                            ->options(fn (Subscription $record) => Products_Service::query()
+                                ->where('base_price', '<=', $record->price)
+                                ->where('id', '!=', $record->product_service_id)
+                                ->pluck('name', 'id'))
+                            ->required(),
+                    ])
+                    ->action(function (array $data, Subscription $record): void {
+                        app(BillingService::class)
+                            ->scheduleDowngrade($record, Products_Service::findOrFail($data['product_service_id']));
+                        Notification::make()
+                            ->title('Downgrade scheduled')
+                            ->body('It will be applied at the next renewal.')
+                            ->success()->send();
+                    }),
                 EditAction::make(),
                 DeleteAction::make(),
             ]);
@@ -94,9 +139,9 @@ class SubscriptionResource extends Resource
     public static function getPages(): array
     {
         return [
-            // 'index' => Pages\ListSubscriptions::route('/'),
-            // 'create' => Pages\CreateSubscription::route('/create'),
-            // 'edit' => Pages\EditSubscription::route('/{record}/edit'),
+            'index' => Pages\ListSubscriptions::route('/'),
+            'create' => Pages\CreateSubscription::route('/create'),
+            'edit' => Pages\EditSubscription::route('/{record}/edit'),
         ];
     }
 }

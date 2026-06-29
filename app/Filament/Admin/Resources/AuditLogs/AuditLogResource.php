@@ -18,7 +18,7 @@ class AuditLogResource extends Resource
     protected static ?string $model = AuditLog::class;
 
     #[\Override]
-    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-clipboard-list';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-clipboard-document-list';
 
     #[\Override]
     protected static string|\UnitEnum|null $navigationGroup = 'Administration';
@@ -49,5 +49,14 @@ class AuditLogResource extends Resource
                     ]),
             ])
             ->defaultSort('created_at', 'desc');
+    }
+
+    #[\Override]
+    public static function getPages(): array
+    {
+        // Read-only (audit trail is immutable): list view only, no create/edit.
+        return [
+            'index' => Pages\ListAuditLogs::route('/'),
+        ];
     }
 }

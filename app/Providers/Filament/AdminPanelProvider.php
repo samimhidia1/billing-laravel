@@ -4,19 +4,15 @@ namespace App\Providers\Filament;
 
 use App\Filament\App\Pages;
 use App\Http\Middleware\TeamsPermission;
-use App\Models\Team;
 use BezhanSalleh\FilamentShield\FilamentShieldPlugin;
-use Filament\Facades\Filament;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
-use Filament\Navigation\MenuItem;
 use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Filament\Widgets;
-use Illuminate\Contracts\Routing\UrlGenerator;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -24,7 +20,6 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
-use Laravel\Jetstream\Features;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -68,28 +63,15 @@ class AdminPanelProvider extends PanelProvider
                 FilamentShieldPlugin::make()->navigationGroup('Administration'),
             ]);
 
-        if (Features::hasTeamFeatures()) {
-            $panel
-                ->tenant(Team::class, ownershipRelationship: 'team')
-                ->tenantRegistration(Pages\CreateTeam::class)
-                ->tenantProfile(Pages\EditTeam::class)
-                ->userMenuItems([
-                    MenuItem::make()
-                        ->label('Team Settings')
-                        ->icon('heroicon-o-cog-6-tooth')
-                        ->url(fn (): UrlGenerator|string => $this->shouldRegisterMenuItem()
-                            ? url(Pages\EditTeam::getUrl())
-                            : url($panel->getPath())),
-                ]);
-        }
+        // NOTE: This is a global super-admin panel and is intentionally NOT
+        // tenant-scoped. Most admin resources (roles, users, site settings, menus,
+        // audit logs) are global system entities with no team_id, so enabling
+        // ->tenant() here made Filament apply a "where team_id = ?" scope to models
+        // that can't satisfy it, 500ing every authenticated request. Team-scoped
+        // work lives in the /app panel (AppPanelProvider), which keeps tenancy.
 
         return $panel;
     }
 
     public function boot(): void {}
-
-    public function shouldRegisterMenuItem(): bool
-    {
-        return auth()->user()?->currentTeam && Filament::hasTenancy() && Filament::getTenant();
-    }
 }
