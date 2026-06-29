@@ -1,33 +1,38 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Mail;
 
+use App\Models\Invoice;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Content;
+use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
 class UpcomingInvoiceReminder extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public function __construct(public $data, public $template) {}
+    public function __construct(public Invoice $invoice) {}
 
-    public function build()
+    public function envelope(): Envelope
     {
-        return $this->subject($this->parseTemplate($this->template->subject))
-            ->view('emails.upcoming-invoice-reminder')
-            ->with([
-                'content' => $this->parseTemplate($this->template->body),
-                'data' => $this->data,
-            ]);
+        return new Envelope(
+            subject: 'Upcoming Invoice Due — '.$this->invoice->invoice_number,
+        );
     }
 
-    private function parseTemplate($text)
+    public function content(): Content
     {
-        foreach ($this->data as $key => $value) {
-            $text = str_replace('{{'.$key.'}}', $value, $text);
-        }
+        return new Content(
+            view: 'emails.upcoming-invoice-reminder',
+        );
+    }
 
-        return $text;
+    public function attachments(): array
+    {
+        return [];
     }
 }

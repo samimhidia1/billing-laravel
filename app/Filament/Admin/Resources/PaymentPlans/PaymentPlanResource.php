@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Filament\Admin\Resources\PaymentPlans;
 
-use App\Filament\Resources\PaymentPlanResource\Pages;
 use App\Models\PaymentPlan;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -80,9 +79,9 @@ class PaymentPlanResource extends Resource
     public static function getPages(): array
     {
         return [
-            // 'index' => Pages\ListPaymentPlans::route('/'),
-            // 'create' => Pages\CreatePaymentPlan::route('/create'),
-            // 'edit' => Pages\EditPaymentPlan::route('/{record}/edit'),
+            'index' => Pages\ListPaymentPlans::route('/'),
+            'create' => Pages\CreatePaymentPlan::route('/create'),
+            'edit' => Pages\EditPaymentPlan::route('/{record}/edit'),
         ];
     }
 }

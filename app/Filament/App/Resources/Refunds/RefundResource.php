@@ -2,8 +2,6 @@
 
 namespace App\Filament\App\Resources\Refunds;
 
-use App\Filament\App\Resources\Refunds\Pages\CreateRefund;
-use App\Filament\App\Resources\Refunds\Pages\EditRefund;
 use App\Filament\App\Resources\Refunds\Pages\ListRefunds;
 use App\Models\Payment;
 use App\Services\RefundService;
@@ -21,6 +19,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 
 class RefundResource extends Resource
 {
@@ -35,6 +34,28 @@ class RefundResource extends Resource
 
     #[\Override]
     protected static ?string $modelLabel = 'Refund';
+
+    // Refunds are issued via the "refund" table action (RefundService), not via a
+    // create/edit form — the scaffolded CRUD pages aren't a valid way to make a Payment.
+    public static function canCreate(): bool
+    {
+        return false;
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return false;
+    }
 
     #[\Override]
     public static function form(Schema $schema): Schema
@@ -191,8 +212,6 @@ class RefundResource extends Resource
     {
         return [
             'index' => ListRefunds::route('/'),
-            'create' => CreateRefund::route('/create'),
-            'edit' => EditRefund::route('/{record}/edit'),
         ];
     }
 

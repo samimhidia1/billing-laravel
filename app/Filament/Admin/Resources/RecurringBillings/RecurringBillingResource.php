@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Filament\Admin\Resources\RecurringBillings;
 
-use App\Filament\Resources\RecurringBillingResource\Pages;
 use App\Models\RecurringBillingConfiguration;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -27,7 +26,7 @@ class RecurringBillingResource extends Resource
     protected static ?string $model = RecurringBillingConfiguration::class;
 
     #[\Override]
-    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-refresh';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-arrow-path';
 
     #[\Override]
     protected static ?string $navigationLabel = 'Recurring Billing';
@@ -116,9 +115,9 @@ class RecurringBillingResource extends Resource
     public static function getPages(): array
     {
         return [
-            // 'index' => Pages\ListRecurringBillings::route('/'),
-            // 'create' => Pages\CreateRecurringBilling::route('/create'),
-            // 'edit' => Pages\EditRecurringBilling::route('/{record}/edit'),
+            'index' => Pages\ListRecurringBillings::route('/'),
+            'create' => Pages\CreateRecurringBilling::route('/create'),
+            'edit' => Pages\EditRecurringBilling::route('/{record}/edit'),
         ];
     }
 }

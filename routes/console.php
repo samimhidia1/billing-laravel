@@ -2,6 +2,7 @@
 
 use App\Models\Report;
 use App\Services\BillingService;
+use App\Services\PaymentPlanService;
 use App\Services\ReportGenerationService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -17,8 +18,13 @@ Schedule::call(function (): void {
 })->daily();
 
 Schedule::command('invoices:send-reminders')->daily();
-Schedule::command('invoices:process-reminders')->daily();
+Schedule::command('services:suspend-overdue')->daily();
 Schedule::command('audit:prune')->daily();
+
+// Generate the next installment invoices for active payment plans.
+Schedule::call(function (): void {
+    app(PaymentPlanService::class)->processPaymentPlans();
+})->daily();
 
 Schedule::call(function (): void {
     $reports = Report::query()

@@ -2,20 +2,20 @@
 
 namespace App\Filament\App\Resources\PartialPayments;
 
-use App\Filament\App\Resources\PartialPayments\Pages\CreatePartialPayment;
-use App\Filament\App\Resources\PartialPayments\Pages\EditPartialPayment;
 use App\Filament\App\Resources\PartialPayments\Pages\ListPartialPayments;
 use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\PaymentGateway;
-use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
+use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 
 class PartialPaymentResource extends Resource
 {
@@ -24,6 +24,28 @@ class PartialPaymentResource extends Resource
 
     #[\Override]
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-circle-stack';
+
+    // Read-only in the demo: recording a payment writes Payment columns that
+    // don't exist yet. Listing invoices with their balances is safe.
+    public static function canCreate(): bool
+    {
+        return false;
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return false;
+    }
 
     #[\Override]
     public static function form(Schema $schema): Schema
@@ -62,11 +84,45 @@ class PartialPaymentResource extends Resource
                 //
             ])
             ->recordActions([
-                EditAction::make(),
+                Action::make('recordPayment')
+                    ->label('Record payment')
+                    ->icon('heroicon-o-banknotes')
+                    ->visible(fn (Invoice $record): bool => in_array($record->status, ['pending', 'partially_paid', 'overdue'], true))
+                    ->schema([
+                        TextInput::make('amount')
+                            ->numeric()
+                            ->required()
+                            ->default(fn (Invoice $record): float => max(0, round((float) $record->total_amount - (float) $record->payments()->sum('amount'), 2)))
+                            ->rules(['numeric', 'min:0.01']),
+                        Select::make('payment_gateway_id')
+                            ->label('Gateway')
+                            ->options(PaymentGateway::where('is_active', true)->pluck('name', 'id'))
+                            ->required(),
+                    ])
+                    ->action(function (array $data, Invoice $record): void {
+                        // Offline/manual payment: record it directly (no external gateway call).
+                        Payment::create([
+                            'invoice_id' => $record->id,
+                            'payment_gateway_id' => $data['payment_gateway_id'],
+                            'payment_date' => now(),
+                            'amount' => $data['amount'],
+                            'currency' => $record->currency,
+                            'payment_method' => 'bank transfer',
+                            'transaction_id' => 'TXN-'.$record->id.'-'.uniqid(),
+                        ]);
+
+                        $paid = (float) $record->payments()->sum('amount');
+                        $fullyPaid = $paid + 0.01 >= (float) $record->total_amount;
+                        $record->update([
+                            'paid_amount' => $paid,
+                            'status' => $fullyPaid ? 'paid' : 'partially_paid',
+                            'paid_date' => $fullyPaid ? now() : null,
+                        ]);
+
+                        Notification::make()->title('Payment recorded')->success()->send();
+                    }),
             ])
-            ->toolbarActions([
-                DeleteBulkAction::make(),
-            ]);
+            ->toolbarActions([]);
     }
 
     #[\Override]
@@ -82,8 +138,6 @@ class PartialPaymentResource extends Resource
     {
         return [
             'index' => ListPartialPayments::route('/'),
-            'create' => CreatePartialPayment::route('/create'),
-            'edit' => EditPartialPayment::route('/{record}/edit'),
         ];
     }
 

@@ -36,6 +36,8 @@ use Illuminate\Support\Facades\Mail;
     'viewed_at',
     'sent_at',
     'paid_at',
+    'paid_amount',
+    'paid_date',
     'status_history',
     'reminder_count',
     'last_reminder_date',

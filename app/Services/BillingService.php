@@ -3,10 +3,12 @@
 namespace App\Services;
 
 use App\Mail\OverdueInvoiceReminder;
+use App\Mail\UpcomingInvoiceReminder;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Invoice_Item;
 use App\Models\Payment;
+use App\Models\Products_Service;
 use App\Models\RecurringBillingConfiguration;
 use App\Models\Subscription;
 use App\Models\SubscriptionPlan;
@@ -62,24 +64,48 @@ class BillingService
         return $subscription;
     }
 
-    public function upgradeSubscription(Subscription $subscription, SubscriptionPlan $newPlan)
+    /**
+     * Immediate upgrade: switch the subscription to a new product and bill the
+     * prorated difference for the remainder of the current period.
+     */
+    public function upgradeSubscription(Subscription $subscription, Products_Service $newProduct): Invoice
     {
-        // Calculate prorated amount
-        $this->calculateProratedAmount(
-            $subscription->price,
-            $newPlan->price,
+        $proratedCharge = max(0.0, round($this->calculateProratedAmount(
+            (float) $subscription->price,
+            (float) $newProduct->base_price,
             $subscription->end_date
-        );
-
-        // Generate upgrade invoice
-        $invoice = $this->generateInvoice($subscription);
+        ), 2));
 
         $subscription->update([
-            'subscription_plan_id' => $newPlan->id,
-            'price' => $newPlan->price,
+            'product_service_id' => $newProduct->id,
+            'price' => $newProduct->base_price,
         ]);
 
-        return $invoice;
+        return Invoice::create([
+            'customer_id' => $subscription->customer_id,
+            'subscription_id' => $subscription->id,
+            'issue_date' => now(),
+            'due_date' => now()->addDays(15),
+            'total_amount' => $proratedCharge,
+            'currency' => $subscription->currency,
+            'status' => 'pending',
+        ]);
+    }
+
+    /**
+     * Deferred downgrade: record the target product in scheduled_change; it is
+     * applied at the next renewal (see Subscription::renew()).
+     */
+    public function scheduleDowngrade(Subscription $subscription, Products_Service $newProduct): void
+    {
+        $subscription->update([
+            'scheduled_change' => [
+                'type' => 'downgrade',
+                'product_service_id' => $newProduct->id,
+                'price' => (float) $newProduct->base_price,
+                'effective_date' => optional($subscription->end_date)->toDateString(),
+            ],
+        ]);
     }
 
     public function cancelSubscription(Subscription $subscription): bool
@@ -601,25 +627,28 @@ class BillingService
         $upcomingInvoices = Invoice::where('status', 'pending')
             ->where('due_date', '>', now())
             ->where('due_date', '<=', now()->addDays(7))
+            ->whereNull('upcoming_reminder_sent') // idempotency: send once
             ->get();
 
         foreach ($upcomingInvoices as $invoice) {
             $customer = $invoice->customer;
 
-            if ($customer->sms_notifications_enabled && $customer->phone_number) {
-                $daysUntilDue = now()->diffInDays($invoice->due_date);
-                $message = $this->getInvoiceReminderMessage($invoice, $daysUntilDue);
+            try {
+                // E-mail reminder
+                Mail::to($customer->email)->send(new UpcomingInvoiceReminder($invoice));
 
-                $this->smsService->send(
-                    $customer->phone_number,
-                    $message
-                );
+                // SMS reminder (when the customer opted in)
+                if ($customer->sms_notifications_enabled && $customer->phone_number) {
+                    $daysUntilDue = (int) now()->diffInDays($invoice->due_date);
+                    $this->smsService->send(
+                        $customer->phone_number,
+                        $this->getInvoiceReminderMessage($invoice, $daysUntilDue)
+                    );
+                }
 
-                Log::info('Upcoming due date reminder SMS sent', [
-                    'invoice_id' => $invoice->id,
-                    'customer_id' => $customer->id,
-                    'days_until_due' => $daysUntilDue,
-                ]);
+                $invoice->update(['upcoming_reminder_sent' => true]);
+            } catch (Exception $e) {
+                Log::error("Failed to send upcoming reminder for invoice {$invoice->id}: ".$e->getMessage());
             }
         }
     }
@@ -676,18 +705,7 @@ class BillingService
 
     private function sendOverdueReminderEmail(Invoice $invoice): void
     {
-        $customer = $invoice->customer;
-        [
-            'customer_name' => $customer->name,
-            'invoice_number' => $invoice->invoice_number,
-            'due_date' => $invoice->due_date->format('Y-m-d'),
-            'amount' => $invoice->total_with_late_fee,
-            'original_amount' => $invoice->total_amount,
-            'late_fee_amount' => $invoice->late_fee_amount,
-            'currency' => $invoice->currency,
-        ];
-
-        // Mail::to($customer->email)->send(new OverdueInvoiceReminder($data));
+        Mail::to($invoice->customer->email)->send(new OverdueInvoiceReminder($invoice));
     }
 
     // private function sendLateFeeNotification(Invoice $invoice, $feeAmount)
